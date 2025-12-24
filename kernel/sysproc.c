@@ -6,6 +6,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
+#include "pstat.h"
 
 uint64
 sys_exit(void)
@@ -106,4 +107,16 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+
+// copies to struct pstat* info about every active process
+// returns 0 on success and -1 on failure
+uint64
+sys_getpinfo(void)
+{
+  uint64 user_dst;               // local kernel variable
+  argaddr(0, &user_dst);    // take the memory address of the first argument(in a0) and store it in user_dst
+
+  return all_procinfo(user_dst);
 }

@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "pstat.h"
 
 struct cpu cpus[NCPU];
 
@@ -124,6 +125,9 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->priority = 0;
+  p->cticks = 0;
+  p->wticks = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -169,6 +173,9 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->priority = 0;
+  p->cticks = 0;
+  p->wticks = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -688,3 +695,43 @@ procdump(void)
     printf("\n");
   }
 }
+
+// helper function for the sys_getpinfo function
+int all_procinfo(uint64 dst)
+{
+  struct pstat pst;
+  struct proc *p;
+  int i = 0; // counter
+
+  for(p=proc; p<&proc[NPROC]; p++){
+    acquire(&p->lock); // need to acquire lock before reading the fields
+
+    if(p->state != UNUSED){
+      pst.pid[i] = p->pid;
+      if(p->parent){                     // need to check if its first process or not otherwise we can cause kernel crash
+        pst.ppid[i] = p->parent->pid;
+      }else{
+        pst.ppid[i] = 0;
+      }
+      safestrcpy(pst.name[i], p->name, sizeof(pst.name[i]));
+      pst.priority[i] = p->priority;
+      pst.cticks[i] = p->cticks;
+      pst.wticks[i] = p->wticks;
+      pst.state[i] = p->state;
+      pst.size[i] = p->sz;
+      pst.valid[i] = 1;
+    }else{
+      pst.valid[i] = 0;
+    }
+
+    release(&p->lock);
+    i++;
+  }
+
+  // copy the pst from kernel space to user space
+  if(copyout(myproc()->pagetable, dst, (char*)&pst, sizeof(pst)))
+    return -1;
+
+  return 0;
+}
+

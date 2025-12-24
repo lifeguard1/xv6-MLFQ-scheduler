@@ -92,6 +92,11 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
 
+  // MLFQ fields
+  int priority;                // current priority level 0-3
+  int cticks;                  // ticks used in current priority level
+  int wticks;                  // ticks spent waiting in lower level. useful to avoid starvation
+
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 
