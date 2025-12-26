@@ -11,6 +11,9 @@ uint ticks;
 
 extern char trampoline[], uservec[];
 
+extern struct proc proc[NPROC];
+
+
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -81,8 +84,54 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    struct proc *p = myproc();
+    struct proc *wp;
+
+    // check if any waiting limit is reached
+    // if yes then promote process. if not continue
+    for(wp = proc; wp < &proc[NPROC]; wp++){
+
+      if(wp == p) continue;
+
+      acquire(&wp->lock);
+      int wlimit = 0;
+      if(wp->state == RUNNABLE){                // only RUNNABLE processes need to have their wticks incremented
+        if(wp->priority == 0) wlimit = 40;
+        else if(wp->priority == 1) wlimit = 80;
+        else if(wp->priority == 2) wlimit = 160;
+        else if(wp->priority == 3) wlimit = 320;
+        wp->wticks++;
+        if(wp->wticks >= wlimit && wp->priority > 0){
+          wp->priority--;
+          wp->cticks = 0;
+          wp->wticks = 0;
+        }
+      }
+      release(&wp->lock);
+    }
+
+    if(p != 0 && p->state == RUNNING){
+      acquire(&p->lock);
+      p->cticks++;                        // increment the ticks the process has used in current priority level
+      p->wticks = 0;
+
+      // need to keep track if the RUNNING process has run out of timer ticks
+      int limit = 0;
+      if(p->priority == 0) limit = 4;
+      else if(p->priority == 1) limit = 8;
+      else if(p->priority == 2) limit = 16;
+      else if(p->priority == 3) limit = 32;
+
+      if(p->cticks >= limit){
+        if(p->priority < 3) p->priority++;  // demote the process if its not in last level already
+        p->cticks =0;                       // reset cticks and wticks
+        p->wticks = 0;
+      }
+      release(&p->lock);
+    }
     yield();
+  }
 
   prepare_return();
 
