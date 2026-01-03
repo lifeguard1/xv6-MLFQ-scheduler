@@ -442,6 +442,7 @@ scheduler(void)
     // to avoid a possible race between an interrupt
     // and wfi.
     intr_on();
+    intr_off();
 
     int found = 0;
     for(int q = 0; q < 4; q++) {  // outer loop for queues
@@ -468,9 +469,7 @@ scheduler(void)
       }
     }
     restart:
-      // if found == 1 then it continues the infinite outside for loop
       if(found == 0){         // if no process was found
-        intr_on();
         asm volatile("wfi");
       }
   }

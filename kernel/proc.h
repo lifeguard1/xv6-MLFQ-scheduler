@@ -96,6 +96,7 @@ struct proc {
   int priority;                // current priority level 0-3
   int cticks;                  // ticks used in current priority level
   int wticks;                  // ticks spent waiting in lower level. useful to avoid starvation
+  int mticks;                  // max ticks for each priority level (4,8,16,32)
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
