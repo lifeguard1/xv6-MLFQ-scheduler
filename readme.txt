@@ -1,29 +1,42 @@
-README - NIKOLAOS KOUTSOUNIS (sdi2300091)
+README - ΝΙΚΟΛΑΟΣ ΚΟΥΤΣΟΥΝΗΣ (sdi2300091)
 
-ΥΛΟΠΟΙΗΣΗ ΝΕΟΥ SYSCALL(ps.c)
+=== ΥΛΟΠΟΙΗΣΗ ΝΕΟΥ SYSCALL (ps.c) ===
 
-Για αρχη προσθεσαμε στην δομη proc τα εξης attributes:
-- priority ωστε να ξερουμε σε ποια ουρα προτεραιοτητας βρισκεται
-- cticks προσδιοριζει ποσα timer ticks εχουν γινει στο current queue
-- wticks προσδιοριζει ποσα timer ticks εχουν γινει σε κατασταση wait(το χρησιμοποιουμε ωστε να μην γινει starvation)
+1. ΤΡΟΠΟΠΟΙΗΣΕΙΣ ΣΤΗ ΔΟΜΗ PROC
+--------------------------------------------------
+Προσθέσαμε στη δομή proc τα εξής attributes:
+* priority: Για να γνωρίζουμε σε ποια ουρά προτεραιότητας βρίσκεται η διεργασία.
+* cticks: Προσδιορίζει πόσα timer ticks έχουν γίνει στο τρέχον queue (current queue).
+* wticks: Προσδιορίζει πόσα timer ticks έχουν γίνει σε κατάσταση wait (χρησιμοποιείται για την αποφυγή starvation).
+* mticks: Προσδιορίζει πόσα timer ticks έχει διαθέσιμα κάθε priority level.
 
-Στην allocproc τα αρχικοποιουμε τα νεα attributes με 0
-Στην freeproc τα μηδενίζουμε
+Διαχείριση:
+- Στην allocproc: Αρχικοποιούμε τα νέα attributes με 0.
+- Στην freeproc: Μηδενίζουμε τα νέα attributes.
 
-Νεα συναρτηση all_procinfo:
-- Ειναι μια βοηθητικη συναρητηση μεσα στο proc.c ωστε να κανει iterate σε ολα τα non-UNUSED processes και να αντιγραψει τα στοιχεια καθε process στην δομη pstat. Επειτα αντιγραφει την γεμισμενη δομη που βρισκεται σε kernel space στο user space το οποιο δωθηκε ως argument στην συναρτηση για να ξερουμε που να το αντιγραψουμε με την copyout.
+2. ΣΥΝΑΡΤΗΣΕΙΣ ΠΥΡΗΝΑ
+--------------------------------------------------
+* Νέα συνάρτηση all_procinfo:
+Είναι μια βοηθητική συνάρτηση μέσα στο proc.c η οποία κάνει iterate σε όλα τα non-UNUSED processes και αντιγράφει τα στοιχεία κάθε process στη δομή pstat. Έπειτα, αντιγράφει τη γεμισμένη δομή από τον kernel space στον user space (που δόθηκε ως argument) χρησιμοποιώντας την copyout.
 
-Νεα συναρτηση sys_getpinfo:
-- Ειναι το kernel syscall που απλα καλει την all_procinfo δινοντας ως argument την destination user address.
+* Νέα συνάρτηση sys_getpinfo:
+Είναι το kernel syscall που απλά καλεί την all_procinfo, δίνοντας ως argument το destination user address.
 
-Νεο αρχειο ps.c:
-- Αφορα την εντολη ps οπου θα μπορει να καλει ο χρηστης ωστε να μεσω της προηγουμενης sys_getpinfo εκτυπωνονται10 τα στοιχεια των processes.
+3. ΕΝΤΟΛΗ PS (ps.c)
+--------------------------------------------------
+* Νέο αρχείο ps.c:
+Αφορά την εντολή ps την οποία μπορεί να καλεί ο χρήστης. Μέσω της sys_getpinfo, εκτυπώνονται τα στοιχεία των διεργασιών (processes).
 
-trap.c:
-- Οταν γινεται timer interrupt τοτε πρεπει να αυξηουμε τα current used ticks του process και να ελεγξουμε εαν εφτασε στο μεγιστο, ωστε αν ναι καλουμε την yield. Επισης για καθε αλλο process που ειναι RUNNABLE αυξανουμε τα waiting ticks ωστε να αποφυγουμε starvation προκαλωντας promote process σε higher priority level.
+4. ΔΙΑΧΕΙΡΙΣΗ INTERRUPTS (trap.c)
+--------------------------------------------------
+* Συνάρτηση clockintr():
+Όταν γίνεται timer interrupt, εκτελούνται τα εξής:
+- Αυξάνουμε τα current used ticks του process και ελέγχουμε αν έφτασε στο μέγιστο. Αν ναι, καλούμε την yield.
+- Για κάθε άλλο process που είναι RUNNABLE, αυξάνουμε τα waiting ticks ώστε να αποφύγουμε το starvation, προκαλώντας promote του process σε υψηλότερο priority level.
 
-proc.c:
-Στην συναρτηση yield() η οποια καλειται μονο οταν καποιο process εξαντλει τα cticks του.
-
-Στην συναρτηση scheduler() αλλαξαμε τα εξης:
-- Για αρχη εχουμε ενα εξωτερικο loop που τρεχει μεταξυ των queues και ενα inner loop που τρεχει τα processes. Οταν μια διεργασια σταματησει να τρεχει τοτε επαναφερουμε το loop και ξαναξεκιναμε απο priority level 0.
+5. ΧΡΟΝΟΠΡΟΓΡΑΜΜΑΤΙΣΜΟΣ (proc.c)
+--------------------------------------------------
+* Συνάρτηση scheduler():
+Πραγματοποιήθηκαν οι εξής αλλαγές:
+- Υπάρχει ένα εξωτερικό loop που τρέχει μεταξύ των queues και ένα εσωτερικό loop που τρέχει τα processes.
+- Όταν μια διεργασία σταματήσει να τρέχει, επαναφέρουμε το loop και ξεκινάμε ξανά από το priority level 0.

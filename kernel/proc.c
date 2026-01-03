@@ -128,6 +128,7 @@ found:
   p->priority = 0;
   p->cticks = 0;
   p->wticks = 0;
+  p->mticks = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -176,6 +177,7 @@ freeproc(struct proc *p)
   p->priority = 0;
   p->cticks = 0;
   p->wticks = 0;
+  p->mticks = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
