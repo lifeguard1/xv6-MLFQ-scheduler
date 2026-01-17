@@ -21,6 +21,8 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+static int curr_pr[4];
+
 // helps ensure that wakeups of wait()ing
 // parents are not lost. helps obey the
 // memory model when using p->parent.
@@ -423,57 +425,108 @@ kwait(uint64 addr)
   }
 }
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
 void
 scheduler(void)
 {
-  struct proc *p;
   struct cpu *c = mycpu();
-
   c->proc = 0;
+
   for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting. Then turn them back off
-    // to avoid a possible race between an interrupt
-    // and wfi.
     intr_on();
     intr_off();
 
     int found = 0;
-    for(int q = 0; q < 4; q++) {  // outer loop for queues
-      for(p = proc; p < &proc[NPROC]; p++){    // loop for processes inside a priority level
+
+    for(int q = 0; q < 4; q++){
+      int start = curr_pr[q];    // this is the index of the next position in the current priority lvl so scheduler could pick from there
+
+      // loop all processes until we find one that is in the required state, priority level and correct POS inside the priority
+      for(int offset = 0; offset < NPROC; offset++){
+        int idx = (start + offset) % NPROC;
+        struct proc *p = &proc[idx];
+
         acquire(&p->lock);
-        if(p->state == RUNNABLE && p->priority == q) {             // we need proc that is in the current search pririty level
-          // Switch to chosen process.  It is the process's job
-          // to release its lock and then reacquire it
-          // before jumping back to us.
+        if(p->state == RUNNABLE && p->priority == q){
+          curr_pr[q] = (idx + 1) % NPROC;              // increase the pointer by one to move onto next process in case time slice was reached of current running process. % NPROC ensures circularity
+
           p->state = RUNNING;
           c->proc = p;
+
           swtch(&c->context, &p->context);
 
-          // Process is done running for now.
-          // It should have changed its p->state before coming back.
           c->proc = 0;
           found = 1;
-          release(&p->lock);
 
-          // now we need to restart loop from priority level 0
+          release(&p->lock);
           goto restart;
         }
         release(&p->lock);
       }
     }
-    restart:
-      if(found == 0){         // if no process was found
-        asm volatile("wfi");
+
+  // by jumping here we are restarting the outer loop
+  restart:
+    if(found == 0){
+      asm volatile("wfi");
+    }
+  }
+}
+
+// function to check time slices and update priorities
+// it is only called inside trap.c/usertrap(),kerneltrap()
+void
+update_ticks(void)
+{
+  struct proc *p = myproc();
+  struct proc *wp;
+
+  // check if any waiting limit is reached
+  // if yes then promote process. if not continue
+  for(wp = proc; wp < &proc[NPROC]; wp++){
+
+    if(wp == p) continue;
+
+    acquire(&wp->lock);
+    if(wp->state == RUNNABLE){                // only RUNNABLE processes need to have their wticks incremented
+      wp->wticks++;
+      if(wp->wticks >= 10 * wp->mticks && wp->priority > 0){
+        wp->priority--;
+        wp->cticks = 0;
+        wp->wticks = 0;
+        // update the new max ticks(time slice) for the demoted(or not) process
+        switch(wp->priority){
+          case 0: wp->mticks = 4; break;
+          case 1: wp->mticks = 8; break;
+          case 2: wp->mticks = 16; break;
+          case 3: wp->mticks = 32; break;
+        }
       }
+    }
+    release(&wp->lock);
+  }
+
+  if(p != 0 && p->state == RUNNING){
+    acquire(&p->lock);
+    p->cticks++;                        // increment the ticks the process has used in current priority level
+    p->wticks = 0;
+  
+    // check if process exceeded its time slice
+    if(p->cticks >= p->mticks){
+      if(p->priority < 3) p->priority++;  // demote the process if its not in last level already
+      p->cticks = 0;                       // reset cticks and wticks
+      p->wticks = 0;
+      // update the new max ticks(time slice) for the demoted(or not) process
+      switch(p->priority) {
+        case 0: p->mticks = 4; break;
+        case 1: p->mticks = 8; break;
+        case 2: p->mticks = 16; break;
+        case 3: p->mticks = 32; break;
+      }
+      release(&p->lock);
+      yield();
+    }else{
+      release(&p->lock);
+    }
   }
 }
 
@@ -711,6 +764,8 @@ int all_procinfo(uint64 dst)
   struct proc *p;
   int i = 0; // counter
 
+  memset(&pst, 0, sizeof(pst));
+
   for(p=proc; p<&proc[NPROC]; p++){
     acquire(&p->lock); // need to acquire lock before reading the fields
 
@@ -742,4 +797,3 @@ int all_procinfo(uint64 dst)
 
   return 0;
 }
-
